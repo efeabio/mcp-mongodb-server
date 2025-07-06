@@ -1,0 +1,52 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+
+# Virtualenv
+venv/
+ENV/
+.env/
+.venv/
+
+# IDEs
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# Arquivos de ambiente
+.env
+.env.*
+
+# Testes e cobertura
+.coverage
+htmlcov/
+.tox/
+.pytest_cache/
+
+# Logs
+*.log
+
+# Arquivos temporários
+*.tmp
+*.swp
+*.bak
+
+# Build
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Recursos e dados
+.resources/
+
+# MCP
+mcp.json
+
+# Outros
+.DS_Store
+Thumbs.db 
