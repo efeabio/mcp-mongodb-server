@@ -165,10 +165,10 @@ class MongoDBConnector:
         
         Args:
             database_name: Nome do database
-            
+        
         Returns:
-            Lista de collections com informações básicas
-            
+            Lista de collections com informações básicas (apenas nome)
+        
         Raises:
             DatabaseNotFoundError: Se o database não existir
             MongoDBConnectionError: Se não conseguir conectar ao MongoDB
@@ -191,18 +191,10 @@ class MongoDBConnector:
                 db.list_collection_names
             )
             
-            result = []
-            for collection_name in collections:
-                collection_info = await self.get_collection_info(database_name, collection_name)
-                result.append({
-                    "name": collection_info.name,
-                    "count": collection_info.count,
-                    "size": collection_info.size,
-                    "storage_size": collection_info.storage_size,
-                    "total_index_size": collection_info.total_index_size
-                })
+            # Retorna apenas o nome das collections
+            result = [{"name": collection_name} for collection_name in collections]
             
-            self.logger.info("Collections listadas com sucesso", 
+            self.logger.info("Collections listadas com sucesso (nomes apenas)", 
                            database=database_name, count=len(result))
             return result
             

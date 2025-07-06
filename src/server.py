@@ -6,7 +6,7 @@ informações de um servidor MongoDB através do Model Context Protocol.
 """
 
 from mcp.server import FastMCP
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 from src.utils.mongo_connector import MongoDBConnector
 from src.utils.logger import get_logger
 from src.services.database_service import DatabaseService
@@ -18,14 +18,36 @@ from src.core.exceptions import (
     DatabaseNotFoundError,
     CollectionNotFoundError
 )
-
+from urllib.parse import quote_plus
 
 # Criação do servidor FastMCP
 server = FastMCP(settings.fastmcp_server_name)
 
+# Monta a URI de conexão com autenticação, se necessário
+def build_mongodb_uri():
+    uri = settings.mongodb_uri
+    username = settings.mongodb_username
+    password = settings.mongodb_password
+    auth_source = settings.mongodb_auth_source
+    
+    if username and password:
+        # Remove protocolo e host da URI base
+        if uri.startswith("mongodb://"):
+            uri_base = uri[len("mongodb://"):]
+        else:
+            uri_base = uri
+        # Monta URI com usuário, senha e authSource
+        uri = f"mongodb://{quote_plus(username)}:{quote_plus(password)}@{uri_base}"
+        if auth_source:
+            if "/?" in uri:
+                uri += f"&authSource={auth_source}"
+            else:
+                uri += f"/?authSource={auth_source}"
+    return uri
+
 # Inicialização do conector MongoDB
 mongo_connector = MongoDBConnector(
-    uri=settings.mongodb_uri,
+    uri=build_mongodb_uri(),
     max_pool_size=settings.max_connections
 )
 
@@ -37,242 +59,109 @@ stats_service = StatsService(mongo_connector)
 # Logger
 logger = get_logger(__name__)
 
+# DEBUG: Exibe variáveis de conexão MongoDB (exceto senha)
+print("DEBUG - Variáveis de conexão MongoDB:")
+print("MONGODB_URI:", settings.mongodb_uri)
+print("MONGODB_USERNAME:", settings.mongodb_username)
+print("MONGODB_AUTH_SOURCE:", settings.mongodb_auth_source)
+print("MAX_CONNECTIONS:", settings.max_connections)
 
-@server.tool()
-async def list_databases() -> Dict[str, Any]:
-    """
-    Lista todos os databases disponíveis no MongoDB.
+# Importação e inicialização das tools
+def initialize_tools():
+    """Inicializa todas as tools e suas dependências."""
+    # Importa os módulos de tools
+    from src.tools import tools_documents, tools_collections, tools_indexes, tools_databases, tools_stats
     
-    Returns:
-        Dicionário com lista de databases e suas informações básicas
-    """
-    try:
-        logger.info("Executando tool: list_databases")
-        databases = await database_service.list_databases()
-        
-        return {
-            "databases": databases,
-            "total_count": len(databases),
-            "status": "success"
-        }
-    except Exception as e:
-        logger.error("Erro ao listar databases", error=str(e))
-        return {
-            "error": f"Erro ao listar databases: {str(e)}",
-            "status": "error"
-        }
-
-
-@server.tool()
-async def get_database_info(database_name: str) -> Dict[str, Any]:
-    """
-    Retorna informações detalhadas de um database MongoDB.
+    # Inicializa as dependências de cada módulo
+    tools_documents.initialize_tools_documents(mongo_connector, logger, server)
+    tools_collections.initialize_tools_collections(mongo_connector, logger, server)
+    tools_indexes.initialize_tools_indexes(mongo_connector, logger, server)
+    tools_databases.initialize_tools_databases(mongo_connector, logger, server)
+    tools_stats.initialize_tools_stats(mongo_connector, logger, server)
     
-    Args:
-        database_name: Nome do database
-        
-    Returns:
-        Dicionário com informações detalhadas do database
-    """
-    try:
-        logger.info("Executando tool: get_database_info", database=database_name)
-        db_info = await database_service.get_database_info(database_name)
-        
-        return {
-            "database": {
-                "name": db_info.name,
-                "size_on_disk": db_info.size_on_disk,
-                "collections": db_info.collections,
-                "objects": db_info.objects,
-                "avg_obj_size": db_info.avg_obj_size,
-                "data_size": db_info.data_size,
-                "storage_size": db_info.storage_size,
-                "indexes": db_info.indexes,
-                "index_size": db_info.index_size
-            },
-            "status": "success"
-        }
-    except ValueError as e:
-        logger.error("Erro de validação ao obter informações do database", 
-                    database=database_name, error=str(e))
-        return {
-            "error": f"Erro de validação: {str(e)}",
-            "status": "error"
-        }
-    except DatabaseNotFoundError as e:
-        logger.error("Database não encontrado", database=database_name, error=str(e))
-        return {
-            "error": f"Database não encontrado: {str(e)}",
-            "status": "error"
-        }
-    except Exception as e:
-        logger.error("Erro ao obter informações do database", 
-                    database=database_name, error=str(e))
-        return {
-            "error": f"Erro ao obter informações do database: {str(e)}",
-            "status": "error"
-        }
-
-
-@server.tool()
-async def list_collections(database_name: str) -> Dict[str, Any]:
-    """
-    Lista todas as collections de um database MongoDB.
+    # Registra as tools no server
+    @server.tool()
+    async def list_documents(database_name: str, collection_name: str, limit: int = 20):
+        return await tools_documents.list_documents(database_name, collection_name, limit)
     
-    Args:
-        database_name: Nome do database
-        
-    Returns:
-        Dicionário com lista de collections e suas informações
-    """
-    try:
-        logger.info("Executando tool: list_collections", database=database_name)
-        collections = await collection_service.list_collections(database_name)
-        
-        return {
-            "database_name": database_name,
-            "collections": collections,
-            "total_count": len(collections),
-            "status": "success"
-        }
-    except ValueError as e:
-        logger.error("Erro de validação ao listar collections", 
-                    database=database_name, error=str(e))
-        return {
-            "error": f"Erro de validação: {str(e)}",
-            "status": "error"
-        }
-    except DatabaseNotFoundError as e:
-        logger.error("Database não encontrado", database=database_name, error=str(e))
-        return {
-            "error": f"Database não encontrado: {str(e)}",
-            "status": "error"
-        }
-    except Exception as e:
-        logger.error("Erro ao listar collections", 
-                    database=database_name, error=str(e))
-        return {
-            "error": f"Erro ao listar collections: {str(e)}",
-            "status": "error"
-        }
-
-
-@server.tool()
-async def get_collection_info(database_name: str, collection_name: str) -> Dict[str, Any]:
-    """
-    Retorna informações detalhadas de uma collection MongoDB.
+    @server.tool()
+    async def get_document(database_name: str, collection_name: str, field: str, value: str):
+        return await tools_documents.get_document(database_name, collection_name, field, value)
     
-    Args:
-        database_name: Nome do database
-        collection_name: Nome da collection
-        
-    Returns:
-        Dicionário com informações detalhadas da collection
-    """
-    try:
-        logger.info("Executando tool: get_collection_info", 
-                   database=database_name, collection=collection_name)
-        collection_info = await collection_service.get_collection_info(
-            database_name, collection_name
-        )
-        
-        return {
-            "collection": {
-                "name": collection_info.name,
-                "count": collection_info.count,
-                "size": collection_info.size,
-                "avg_obj_size": collection_info.avg_obj_size,
-                "storage_size": collection_info.storage_size,
-                "total_index_size": collection_info.total_index_size,
-                "indexes": collection_info.indexes
-            },
-            "database_name": database_name,
-            "status": "success"
-        }
-    except ValueError as e:
-        logger.error("Erro de validação ao obter informações da collection", 
-                    database=database_name, collection=collection_name, error=str(e))
-        return {
-            "error": f"Erro de validação: {str(e)}",
-            "status": "error"
-        }
-    except DatabaseNotFoundError as e:
-        logger.error("Database não encontrado", 
-                    database=database_name, collection=collection_name, error=str(e))
-        return {
-            "error": f"Database não encontrado: {str(e)}",
-            "status": "error"
-        }
-    except CollectionNotFoundError as e:
-        logger.error("Collection não encontrada", 
-                    database=database_name, collection=collection_name, error=str(e))
-        return {
-            "error": f"Collection não encontrada: {str(e)}",
-            "status": "error"
-        }
-    except Exception as e:
-        logger.error("Erro ao obter informações da collection", 
-                    database=database_name, collection=collection_name, error=str(e))
-        return {
-            "error": f"Erro ao obter informações da collection: {str(e)}",
-            "status": "error"
-        }
-
-
-@server.tool()
-async def get_server_status() -> Dict[str, Any]:
-    """
-    Retorna status geral do servidor MongoDB.
+    @server.tool()
+    async def insert_document(database_name: str, collection_name: str, document: dict):
+        return await tools_documents.insert_document(database_name, collection_name, document)
     
-    Returns:
-        Dicionário com status detalhado do servidor
-    """
-    try:
-        logger.info("Executando tool: get_server_status")
-        server_status = await stats_service.get_server_status()
-        
-        return {
-            "server_status": {
-                "version": server_status.version,
-                "uptime": server_status.uptime,
-                "connections": server_status.connections,
-                "memory": server_status.memory,
-                "operations": server_status.operations,
-                "network": server_status.network
-            },
-            "status": "success"
-        }
-    except Exception as e:
-        logger.error("Erro ao obter status do servidor", error=str(e))
-        return {
-            "error": f"Erro ao obter status do servidor: {str(e)}",
-            "status": "error"
-        }
-
-
-@server.tool()
-async def get_system_stats() -> Dict[str, Any]:
-    """
-    Retorna estatísticas do sistema.
+    @server.tool()
+    async def update_document(database_name: str, collection_name: str, field: str, value: str, update: dict):
+        return await tools_documents.update_document(database_name, collection_name, field, value, update)
     
-    Returns:
-        Dicionário com estatísticas detalhadas do sistema
-    """
-    try:
-        logger.info("Executando tool: get_system_stats")
-        system_stats = await stats_service.get_system_stats()
-        
-        return {
-            "system_stats": system_stats,
-            "status": "success"
-        }
-    except Exception as e:
-        logger.error("Erro ao obter estatísticas do sistema", error=str(e))
-        return {
-            "error": f"Erro ao obter estatísticas do sistema: {str(e)}",
-            "status": "error"
-        }
+    @server.tool()
+    async def delete_document(database_name: str, collection_name: str, field: str, value: str):
+        return await tools_documents.delete_document(database_name, collection_name, field, value)
+    
+    @server.tool()
+    async def list_collections(database_name: str):
+        return await tools_collections.list_collections(database_name)
+    
+    @server.tool()
+    async def create_collection(database_name: str, collection_name: str):
+        return await tools_collections.create_collection(database_name, collection_name)
+    
+    @server.tool()
+    async def drop_collection(database_name: str, collection_name: str):
+        return await tools_collections.drop_collection(database_name, collection_name)
+    
+    @server.tool()
+    async def rename_collection(database_name: str, old_name: str, new_name: str):
+        return await tools_collections.rename_collection(database_name, old_name, new_name)
+    
+    @server.tool()
+    async def validate_collection(database_name: str, collection_name: str):
+        return await tools_collections.validate_collection(database_name, collection_name)
+    
+    @server.tool()
+    async def count_documents(database_name: str, collection_name: str, filter: Optional[dict] = None):
+        return await tools_collections.count_documents(database_name, collection_name, filter)
+    
+    @server.tool()
+    async def aggregate(database_name: str, collection_name: str, pipeline: list):
+        return await tools_collections.aggregate(database_name, collection_name, pipeline)
+    
+    @server.tool()
+    async def list_databases():
+        return await tools_databases.list_databases()
+    
+    @server.tool()
+    async def drop_database(database_name: str):
+        return await tools_databases.drop_database(database_name)
+    
+    @server.tool()
+    async def create_index(database_name: str, collection_name: str, keys: list, index_name: Optional[str] = None, unique: bool = False):
+        return await tools_indexes.create_index(database_name, collection_name, keys, index_name, unique)
+    
+    @server.tool()
+    async def list_indexes(database_name: str, collection_name: str):
+        return await tools_indexes.list_indexes(database_name, collection_name)
+    
+    @server.tool()
+    async def drop_index(database_name: str, collection_name: str, index_name: str):
+        return await tools_indexes.drop_index(database_name, collection_name, index_name)
+    
+    @server.tool()
+    async def get_database_info(database_name: str):
+        return await tools_databases.get_database_info(database_name)
+    
+    @server.tool()
+    async def get_server_status():
+        return await tools_stats.get_server_status()
+    
+    @server.tool()
+    async def get_system_stats():
+        return await tools_stats.get_system_stats()
 
+# Inicializa as tools
+initialize_tools()
 
 # Função para limpeza de recursos
 def cleanup():
@@ -284,7 +173,6 @@ def cleanup():
         logger.info("Recursos do servidor limpos com sucesso")
     except Exception as e:
         logger.error("Erro ao limpar recursos", error=str(e))
-
 
 # Registra função de limpeza
 import atexit
