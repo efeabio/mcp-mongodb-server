@@ -140,7 +140,9 @@ class Settings(BaseSettings):
     
     model_config = {
         "case_sensitive": False,
-        "extra": "ignore"
+        "extra": "ignore",
+        "env_file": None,
+        "env_file_encoding": None
     }
 
 
