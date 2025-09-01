@@ -114,6 +114,36 @@ Após configurar a conexão, a IA pode usar todas as tools disponíveis:
    python -m src.main
    ```
 
+### Configuração no Cursor
+
+Para usar o servidor MCP no Cursor, adicione a seguinte configuração ao seu arquivo de configuração:
+
+```json
+{
+  "mcpServers": {
+    "mongodb": {
+      "command": "/caminho/para/seu/projeto/mongodb/start-mcp.sh"
+    }
+  }
+}
+```
+
+**Exemplo para o projeto atual:**
+```json
+{
+  "mcpServers": {
+    "mongodb": {
+      "command": "/home/fabio/Documentos/work/codes/ai/mcp/mongodb/start-mcp.sh"
+    }
+  }
+}
+```
+
+**Nota:** Certifique-se de que o script `start-mcp.sh` tem permissões de execução:
+```bash
+chmod +x start-mcp.sh
+```
+
 ### Instalação com Scripts de Desenvolvimento (Recomendado)
 
 1. Clone o repositório

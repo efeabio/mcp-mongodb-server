@@ -2,7 +2,7 @@
 # Script para iniciar o servidor MCP MongoDB com conexão dinâmica
 # Todas as configurações são feitas via tools de conexão
 
-# Ativa o ambiente virtual e executa o servidor MCP RabbitMQ
+# Ativa o ambiente virtual e executa o servidor MCP MongoDB
 cd "$(dirname "$0")"
 source venv/bin/activate
 
