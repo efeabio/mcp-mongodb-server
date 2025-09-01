@@ -72,35 +72,6 @@ install_deps() {
 up() {
     log "Iniciando ambiente de desenvolvimento..."
     
-    if [ ! -f ".env" ]; then
-        warning "Arquivo .env não encontrado, criando .env básico..."
-        cat > .env << EOF
-# Configurações do MongoDB
-MONGODB_URI=mongodb://localhost:27017
-MONGODB_USERNAME=
-MONGODB_PASSWORD=
-MONGODB_AUTH_SOURCE=admin
-
-# Configurações do Servidor FastMCP
-FASTMCP_SERVER_NAME=mongodb-info-server
-FASTMCP_SERVER_VERSION=1.0.0
-FASTMCP_SERVER_DESCRIPTION=FastMCP Server for MongoDB information and statistics
-
-# Configurações de Logging
-LOG_LEVEL=INFO
-
-# Configurações de Conexão
-CONNECTION_TIMEOUT_MS=5000
-QUERY_TIMEOUT_MS=30000
-MAX_CONNECTIONS=10
-
-# Configurações de Desenvolvimento
-DEBUG=true
-ENVIRONMENT=development
-EOF
-        log "Arquivo .env criado"
-    fi
-    
     activate_venv
     install_deps
     
