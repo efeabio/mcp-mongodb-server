@@ -1,5 +1,7 @@
 from typing import Dict, Any, List, Optional
 import asyncio
+from src.tools.connection_guard import require_connection
+from src.tools.tools_connection import get_mongo_connector
 
 # Estas variáveis serão inicializadas pelo server
 mongo_connector = None
@@ -13,17 +15,23 @@ def initialize_tools_indexes(connector, log, srv):
     logger = log
     server = srv
 
+def get_connector():
+    """Obtém o conector MongoDB atual."""
+    return get_mongo_connector() or mongo_connector
+
+@require_connection
 async def list_indexes(database_name: str, collection_name: str) -> Dict[str, Any]:
     """
     Lista os índices de uma collection de qualquer database.
     """
     try:
         logger.info("Executando tool: list_indexes", database=database_name, collection=collection_name)
+        connector = get_connector()
         loop = asyncio.get_event_loop()
-        db = mongo_connector.client[database_name]
+        db = connector.client[database_name]
         collection = db[collection_name]
         indexes = await loop.run_in_executor(
-            mongo_connector._executor,
+            connector._executor,
             lambda: list(collection.list_indexes())
         )
         for idx in indexes:
@@ -40,6 +48,7 @@ async def list_indexes(database_name: str, collection_name: str) -> Dict[str, An
             "status": "error"
         }
 
+@require_connection
 async def create_index(database_name: str, collection_name: str, keys: List[tuple], index_name: Optional[str] = None, unique: bool = False) -> Dict[str, Any]:
     """
     Cria um índice em uma collection de qualquer database.
@@ -53,15 +62,16 @@ async def create_index(database_name: str, collection_name: str, keys: List[tupl
     """
     try:
         logger.info("Executando tool: create_index", database=database_name, collection=collection_name, keys=keys, unique=unique)
+        connector = get_connector()
         loop = asyncio.get_event_loop()
-        db = mongo_connector.client[database_name]
+        db = connector.client[database_name]
         collection = db[collection_name]
         
         # Converte lista de tuplas para dicionário
         index_keys = dict(keys)
         
         result = await loop.run_in_executor(
-            mongo_connector._executor,
+            connector._executor,
             lambda: collection.create_index(index_keys, name=index_name, unique=unique)
         )
         return {
@@ -76,6 +86,7 @@ async def create_index(database_name: str, collection_name: str, keys: List[tupl
             "status": "error"
         }
 
+@require_connection
 async def drop_index(database_name: str, collection_name: str, index_name: str) -> Dict[str, Any]:
     """
     Remove um índice de uma collection de qualquer database.
@@ -87,12 +98,13 @@ async def drop_index(database_name: str, collection_name: str, index_name: str) 
     """
     try:
         logger.info("Executando tool: drop_index", database=database_name, collection=collection_name, index_name=index_name)
+        connector = get_connector()
         loop = asyncio.get_event_loop()
-        db = mongo_connector.client[database_name]
+        db = connector.client[database_name]
         collection = db[collection_name]
         
         result = await loop.run_in_executor(
-            mongo_connector._executor,
+            connector._executor,
             lambda: collection.drop_index(index_name)
         )
         return {

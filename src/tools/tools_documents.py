@@ -1,5 +1,7 @@
 from typing import Dict, Any
 import asyncio
+from src.tools.connection_guard import require_connection
+from src.tools.tools_connection import get_mongo_connector
 
 # Estas variáveis serão inicializadas pelo server
 mongo_connector = None
@@ -13,6 +15,11 @@ def initialize_tools_documents(connector, log, srv):
     logger = log
     server = srv
 
+def get_connector():
+    """Obtém o conector MongoDB atual."""
+    return get_mongo_connector() or mongo_connector
+
+@require_connection
 async def list_documents(database_name: str, collection_name: str, limit: int = 20) -> Dict[str, Any]:
     """
     Lista documentos de qualquer collection de qualquer database.
@@ -27,11 +34,12 @@ async def list_documents(database_name: str, collection_name: str, limit: int = 
     """
     try:
         logger.info("Executando tool: list_documents", database=database_name, collection=collection_name, limit=limit)
+        connector = get_connector()
         loop = asyncio.get_event_loop()
-        db = mongo_connector.client[database_name]
+        db = connector.client[database_name]
         collection = db[collection_name]
         documents = await loop.run_in_executor(
-            mongo_connector._executor,
+            connector._executor,
             lambda: list(collection.find({}, {"_id": 0}).limit(limit))
         )
         return {
@@ -46,6 +54,7 @@ async def list_documents(database_name: str, collection_name: str, limit: int = 
             "status": "error"
         }
 
+@require_connection
 async def get_document(database_name: str, collection_name: str, field: str, value: str) -> Dict[str, Any]:
     """
     Busca um documento em qualquer collection de qualquer database por um campo e valor.
@@ -61,11 +70,12 @@ async def get_document(database_name: str, collection_name: str, field: str, val
     """
     try:
         logger.info("Executando tool: get_document", database=database_name, collection=collection_name, field=field, value=value)
+        connector = get_connector()
         loop = asyncio.get_event_loop()
-        db = mongo_connector.client[database_name]
+        db = connector.client[database_name]
         collection = db[collection_name]
         document = await loop.run_in_executor(
-            mongo_connector._executor,
+            connector._executor,
             lambda: collection.find_one({field: value}, {"_id": 0})
         )
         if document:
@@ -85,6 +95,7 @@ async def get_document(database_name: str, collection_name: str, field: str, val
             "status": "error"
         }
 
+@require_connection
 async def insert_document(database_name: str, collection_name: str, document: dict) -> Dict[str, Any]:
     """
     Insere um novo documento em qualquer collection de qualquer database.
@@ -99,11 +110,12 @@ async def insert_document(database_name: str, collection_name: str, document: di
     """
     try:
         logger.info("Executando tool: insert_document", database=database_name, collection=collection_name, document=document)
+        connector = get_connector()
         loop = asyncio.get_event_loop()
-        db = mongo_connector.client[database_name]
+        db = connector.client[database_name]
         collection = db[collection_name]
         result = await loop.run_in_executor(
-            mongo_connector._executor,
+            connector._executor,
             lambda: collection.insert_one(document)
         )
         return {
@@ -117,6 +129,7 @@ async def insert_document(database_name: str, collection_name: str, document: di
             "status": "error"
         }
 
+@require_connection
 async def update_document(database_name: str, collection_name: str, field: str, value: str, update: dict) -> Dict[str, Any]:
     """
     Atualiza um documento em qualquer collection de qualquer database, buscando por um campo e valor.
@@ -133,11 +146,12 @@ async def update_document(database_name: str, collection_name: str, field: str, 
     """
     try:
         logger.info("Executando tool: update_document", database=database_name, collection=collection_name, field=field, value=value, update=update)
+        connector = get_connector()
         loop = asyncio.get_event_loop()
-        db = mongo_connector.client[database_name]
+        db = connector.client[database_name]
         collection = db[collection_name]
         result = await loop.run_in_executor(
-            mongo_connector._executor,
+            connector._executor,
             lambda: collection.update_one({field: value}, {"$set": update})
         )
         if result.matched_count == 0:
@@ -157,6 +171,7 @@ async def update_document(database_name: str, collection_name: str, field: str, 
             "status": "error"
         }
 
+@require_connection
 async def delete_document(database_name: str, collection_name: str, field: str, value: str) -> Dict[str, Any]:
     """
     Remove um documento em qualquer collection de qualquer database, buscando por um campo e valor.
@@ -172,11 +187,12 @@ async def delete_document(database_name: str, collection_name: str, field: str, 
     """
     try:
         logger.info("Executando tool: delete_document", database=database_name, collection=collection_name, field=field, value=value)
+        connector = get_connector()
         loop = asyncio.get_event_loop()
-        db = mongo_connector.client[database_name]
+        db = connector.client[database_name]
         collection = db[collection_name]
         result = await loop.run_in_executor(
-            mongo_connector._executor,
+            connector._executor,
             lambda: collection.delete_one({field: value})
         )
         if result.deleted_count == 0:

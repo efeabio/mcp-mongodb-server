@@ -8,7 +8,6 @@ __pycache__/
 # Virtualenv
 venv/
 ENV/
-.env/
 .venv/
 
 # IDEs
@@ -16,10 +15,6 @@ ENV/
 .idea/
 *.sublime-project
 *.sublime-workspace
-
-# Arquivos de ambiente
-.env
-.env.*
 
 # Testes e cobertura
 .coverage

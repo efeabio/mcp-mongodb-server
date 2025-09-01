@@ -7,12 +7,6 @@ Este módulo inicia o servidor FastMCP em modo STDIO.
 import sys
 from src.server import server
 from src.utils.logger import get_logger
-from src.config.settings import settings
-from dotenv import load_dotenv
-import os
-
-# Carrega o .env da raiz do projeto
-load_dotenv(dotenv_path=os.path.join(os.path.dirname(os.path.dirname(__file__)), '.env'))
 
 def main():
     """
@@ -23,9 +17,7 @@ def main():
     logger = get_logger(__name__)
     
     try:
-        logger.info("Iniciando FastMCP MongoDB Server", 
-                   version=settings.fastmcp_server_version,
-                   name=settings.fastmcp_server_name)
+        logger.info("Iniciando FastMCP MongoDB Server")
         
         # Executa o servidor em modo STDIO
         server.run()

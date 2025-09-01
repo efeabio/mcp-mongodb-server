@@ -1,0 +1,178 @@
+"""
+Servidor FastMCP para MongoDB.
+
+Este módulo contém o servidor FastMCP principal que disponibiliza
+informações de um servidor MongoDB através do Model Context Protocol.
+"""
+
+from mcp.server import FastMCP
+from typing import Any, Dict, List, Optional
+from utils.logger import get_logger
+from core.exceptions import (
+    MongoDBConnectionError,
+    DatabaseNotFoundError,
+    CollectionNotFoundError
+)
+
+# Criação do servidor FastMCP
+server = FastMCP("mongodb-info-server")
+
+# Inicialização do conector MongoDB (será configurado dinamicamente)
+mongo_connector = None
+
+# Logger
+logger = get_logger(__name__)
+
+# Importação e inicialização das tools
+def initialize_tools():
+    """Inicializa todas as tools e suas dependências."""
+    # Importa os módulos de tools para que os decorators sejam executados
+    from tools import tools_documents, tools_collections, tools_indexes, tools_databases, tools_stats, tools_connection
+    from tools.decorators import register_tools_with_server
+    from tools.dependencies import DependencyContainer
+    
+    # Inicializa o DependencyContainer com o servidor
+    DependencyContainer.initialize(mongo_connector, logger, server)
+    
+    # Inicializa as dependências de cada módulo (para compatibilidade)
+    tools_connection.initialize_tools_connection(mongo_connector, logger, server)
+    tools_documents.initialize_tools_documents(mongo_connector, logger, server)
+    tools_collections.initialize_tools_collections(mongo_connector, logger, server)
+    tools_indexes.initialize_tools_indexes(mongo_connector, logger, server)
+    tools_databases.initialize_tools_databases(mongo_connector, logger, server)
+    tools_stats.initialize_tools_stats(mongo_connector, logger, server)
+    
+    # Registra todas as tools automaticamente usando o sistema de decorators
+    register_tools_with_server()
+    
+    # Registra as tools no server
+    # Tools de conexão
+    @server.tool()
+    async def configure_mongodb_connection(
+        host: str = "localhost",
+        port: int = 27017,
+        username: Optional[str] = None,
+        password: Optional[str] = None,
+        auth_source: str = "admin",
+        database: Optional[str] = None,
+        max_connections: int = 10
+    ):
+        return await tools_connection.configure_mongodb_connection(
+            host, port, username, password, auth_source, database, max_connections
+        )
+    
+    @server.tool()
+    async def test_connection():
+        return await tools_connection.test_connection()
+    
+    @server.tool()
+    async def get_connection_status():
+        return await tools_connection.get_connection_status()
+    
+    @server.tool()
+    async def disconnect_mongodb():
+        return await tools_connection.disconnect_mongodb()
+    
+    # Tools de documentos
+    @server.tool()
+    async def list_documents(database_name: str, collection_name: str, limit: int = 20):
+        return await tools_documents.list_documents(database_name, collection_name, limit)
+    
+    @server.tool()
+    async def get_document(database_name: str, collection_name: str, field: str, value: str):
+        return await tools_documents.get_document(database_name, collection_name, field, value)
+    
+    @server.tool()
+    async def insert_document(database_name: str, collection_name: str, document: dict):
+        return await tools_documents.insert_document(database_name, collection_name, document)
+    
+    @server.tool()
+    async def update_document(database_name: str, collection_name: str, field: str, value: str, update: dict):
+        return await tools_documents.update_document(database_name, collection_name, field, value, update)
+    
+    @server.tool()
+    async def delete_document(database_name: str, collection_name: str, field: str, value: str):
+        return await tools_documents.delete_document(database_name, collection_name, field, value)
+    
+    # Tools de collections
+    @server.tool()
+    async def list_collections(database_name: str):
+        return await tools_collections.list_collections(database_name)
+    
+    @server.tool()
+    async def create_collection(database_name: str, collection_name: str):
+        return await tools_collections.create_collection(database_name, collection_name)
+    
+    @server.tool()
+    async def drop_collection(database_name: str, collection_name: str):
+        return await tools_collections.drop_collection(database_name, collection_name)
+    
+    @server.tool()
+    async def rename_collection(database_name: str, old_name: str, new_name: str):
+        return await tools_collections.rename_collection(database_name, old_name, new_name)
+    
+    @server.tool()
+    async def validate_collection(database_name: str, collection_name: str):
+        return await tools_collections.validate_collection(database_name, collection_name)
+    
+    @server.tool()
+    async def count_documents(database_name: str, collection_name: str, filter: Optional[dict] = None):
+        return await tools_collections.count_documents(database_name, collection_name, filter)
+    
+    @server.tool()
+    async def aggregate(database_name: str, collection_name: str, pipeline: list):
+        return await tools_collections.aggregate(database_name, collection_name, pipeline)
+    
+    # Tools de databases
+    @server.tool()
+    async def list_databases():
+        return await tools_databases.list_databases()
+    
+    @server.tool()
+    async def drop_database(database_name: str):
+        return await tools_databases.drop_database(database_name)
+    
+    @server.tool()
+    async def get_database_info(database_name: str):
+        return await tools_databases.get_database_info(database_name)
+    
+    # Tools de índices
+    @server.tool()
+    async def create_index(database_name: str, collection_name: str, keys: list, index_name: Optional[str] = None, unique: bool = False):
+        return await tools_indexes.create_index(database_name, collection_name, keys, index_name, unique)
+    
+    @server.tool()
+    async def list_indexes(database_name: str, collection_name: str):
+        return await tools_indexes.list_indexes(database_name, collection_name)
+    
+    @server.tool()
+    async def drop_index(database_name: str, collection_name: str, index_name: str):
+        return await tools_indexes.drop_index(database_name, collection_name, index_name)
+    
+    # Tools de estatísticas
+    @server.tool()
+    async def get_server_status():
+        return await tools_stats.get_server_status()
+    
+    @server.tool()
+    async def get_system_stats():
+        return await tools_stats.get_system_stats()
+
+# Inicializa as tools
+initialize_tools()
+
+# Função para limpeza de recursos
+def cleanup():
+    """
+    Função para limpeza de recursos do servidor.
+    """
+    try:
+        if mongo_connector:
+            mongo_connector.close()
+        logger.info("Recursos do servidor limpos com sucesso")
+    except Exception as e:
+        logger.error("Erro ao limpar recursos", error=str(e))
+
+# Registra função de limpeza
+import atexit
+atexit.register(cleanup) 

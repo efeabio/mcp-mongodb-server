@@ -226,7 +226,7 @@ class StatsService:
             performance_metrics = await self.get_performance_metrics()
             
             detailed_info = {
-                "server_status": server_status.dict(),
+                "server_status": server_status.model_dump(),
                 "system_stats": system_stats,
                 "health_info": health_info,
                 "performance_metrics": performance_metrics,
