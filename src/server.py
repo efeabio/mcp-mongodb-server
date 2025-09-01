@@ -5,6 +5,7 @@ Servidor FastMCP para MongoDB
 from typing import Dict, Any, Optional, List
 import logging
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import asynccontextmanager
 
 from fastmcp import FastMCP
 from src.utils.logger import get_logger
@@ -12,14 +13,76 @@ from src.utils.logger import get_logger
 # Configuração do logging
 logging.basicConfig(level=logging.INFO)
 
-# Criação do servidor FastMCP
-server = FastMCP("mongodb-info-server")
-
 # Inicialização do conector MongoDB (será configurado dinamicamente)
 mongo_connector = None
 
 # Logger
 logger = get_logger(__name__)
+
+# Lifespan Management
+@asynccontextmanager
+async def lifespan(server: FastMCP):
+    """
+    Context manager para gerenciar o ciclo de vida do servidor MCP.
+    
+    Startup: Inicializa recursos necessários
+    Shutdown: Limpa recursos adequadamente
+    """
+    # Startup
+    try:
+        # Recursos serão inicializados dinamicamente quando necessário
+        yield
+    except Exception as e:
+        logger.error("Erro durante inicialização do servidor", error=str(e))
+        raise
+    finally:
+        # Cleanup
+        try:
+            if mongo_connector:
+                await mongo_connector.aclose()
+        except Exception as e:
+            logger.error("Erro durante finalização do servidor", error=str(e))
+
+# Criação do servidor FastMCP com lifespan
+server = FastMCP(
+    name="mongodb-info-server",
+    instructions="""
+    Servidor MCP para interação com MongoDB que fornece acesso completo a:
+    
+    **Conexão**:
+    - Configurar e testar conexões MongoDB
+    - Verificar status de conectividade
+    
+    **Databases**:
+    - Listar, criar e gerenciar databases
+    - Obter estatísticas detalhadas de databases
+    
+    **Collections**:
+    - Listar, criar, renomear e remover collections
+    - Validar schemas e obter informações detalhadas
+    
+    **Documentos**:
+    - Operações CRUD completas (Create, Read, Update, Delete)
+    - Busca e listagem com filtros avançados
+    - Suporte a aggregation pipelines
+    
+    **Índices**:
+    - Criar, listar e remover índices
+    - Análise de performance de queries
+    
+    **Estatísticas**:
+    - Status do servidor MongoDB
+    - Métricas de sistema e performance
+    - Monitoramento de recursos
+    
+    Use as tools disponíveis para interagir com seu ambiente MongoDB de forma segura e eficiente.
+    """,
+    lifespan=lifespan,
+    include_fastmcp_meta=True,
+    on_duplicate_tools="warn",
+    on_duplicate_resources="warn",
+    on_duplicate_prompts="replace"
+)
 
 # Importação e inicialização das tools
 def initialize_tools():
@@ -44,18 +107,138 @@ def initialize_tools():
     register_tools_with_server()
     
     # Registra tools que ainda não foram migradas para o sistema de decorators
-    # Tools de documentos
-    @server.tool()
-    async def mongodb_list_documents(database_name: str, collection_name: str, limit: int = 20):
-        return await tools_documents.list_documents(database_name, collection_name, limit)
+    # Tools de documentos com validação robusta
+    from src.models.validation import DocumentQuery, DocumentInsert
+    from fastmcp.exceptions import ToolError
+    from pydantic import ValidationError
     
     @server.tool()
-    async def mongodb_get_document(database_name: str, collection_name: str, field: str, value: str):
-        return await tools_documents.get_document(database_name, collection_name, field, value)
+    async def mongodb_list_documents(
+        database_name: str,
+        collection_name: str,
+        limit: int = 20
+    ) -> dict:
+        """
+        Lista documentos de uma collection MongoDB com validação robusta.
+        
+        Args:
+            database_name: Nome do database MongoDB (1-64 caracteres, sem caracteres especiais)
+            collection_name: Nome da collection (1-120 caracteres, não pode começar com 'system.')
+            limit: Limite de documentos retornados (1-1000, padrão: 20)
+            
+        Returns:
+            dict: Lista de documentos encontrados
+            
+        Raises:
+            ToolError: Se os parâmetros forem inválidos ou ocorrer erro na operação
+        """
+        try:
+            # Validação usando Pydantic
+            query = DocumentQuery(
+                database_name=database_name,
+                collection_name=collection_name,
+                field="_id",  # Campo dummy para validação
+                value="dummy",  # Valor dummy para validação
+                limit=limit
+            )
+            
+            # Chama a função original com parâmetros validados
+            return await tools_documents.list_documents(
+                query.database_name,
+                query.collection_name,
+                query.limit
+            )
+            
+        except ValidationError as e:
+            # Converte erros de validação Pydantic em ToolError
+            errors = "; ".join([f"{err['loc'][0]}: {err['msg']}" for err in e.errors])
+            raise ToolError(f"Parâmetros inválidos: {errors}")
+        except Exception as e:
+            raise ToolError(f"Erro ao listar documentos: {str(e)}")
     
     @server.tool()
-    async def mongodb_insert_document(database_name: str, collection_name: str, document: dict):
-        return await tools_documents.insert_document(database_name, collection_name, document)
+    async def mongodb_get_document(
+        database_name: str, 
+        collection_name: str, 
+        field: str, 
+        value: str
+    ) -> dict:
+        """
+        Busca um documento específico em uma collection MongoDB.
+        
+        Args:
+            database_name: Nome do database MongoDB (1-64 caracteres)
+            collection_name: Nome da collection (1-120 caracteres)
+            field: Campo para busca (1-100 caracteres)
+            value: Valor para buscar no campo especificado
+            
+        Returns:
+            dict: Documento encontrado ou informações sobre a busca
+            
+        Raises:
+            ToolError: Se os parâmetros forem inválidos ou ocorrer erro na operação
+        """
+        try:
+            # Validação usando Pydantic
+            query = DocumentQuery(
+                database_name=database_name,
+                collection_name=collection_name,
+                field=field,
+                value=value
+            )
+            
+            return await tools_documents.get_document(
+                query.database_name,
+                query.collection_name,
+                query.field,
+                query.value
+            )
+            
+        except ValidationError as e:
+            errors = "; ".join([f"{err['loc'][0]}: {err['msg']}" for err in e.errors])
+            raise ToolError(f"Parâmetros inválidos: {errors}")
+        except Exception as e:
+            raise ToolError(f"Erro ao buscar documento: {str(e)}")
+    
+    @server.tool()
+    async def mongodb_insert_document(
+        database_name: str, 
+        collection_name: str, 
+        document: dict
+    ) -> dict:
+        """
+        Insere um documento em uma collection MongoDB com validação robusta.
+        
+        Args:
+            database_name: Nome do database MongoDB (1-64 caracteres)
+            collection_name: Nome da collection (1-120 caracteres) 
+            document: Documento JSON a ser inserido (máximo ~15MB)
+            
+        Returns:
+            dict: Resultado da inserção incluindo ID gerado
+            
+        Raises:
+            ToolError: Se os parâmetros forem inválidos ou ocorrer erro na operação
+        """
+        try:
+            # Validação usando Pydantic
+            insert_data = DocumentInsert(
+                database_name=database_name,
+                collection_name=collection_name,
+                document=document
+            )
+            
+            return await tools_documents.insert_document(
+                insert_data.database_name,
+                insert_data.collection_name,
+                insert_data.document
+            )
+            
+        except ValidationError as e:
+            errors = "; ".join([f"{err['loc'][0]}: {err['msg']}" for err in e.errors])
+            raise ToolError(f"Parâmetros inválidos: {errors}")
+        except Exception as e:
+            raise ToolError(f"Erro ao inserir documento: {str(e)}")
     
     @server.tool()
     async def mongodb_update_document(database_name: str, collection_name: str, field: str, value: str, update: dict):
@@ -173,18 +356,4 @@ async def get_system_stats():
 # Inicializa as tools
 initialize_tools()
 
-# Função para limpeza de recursos
-def cleanup():
-    """
-    Função para limpeza de recursos do servidor.
-    """
-    try:
-        if mongo_connector:
-            mongo_connector.close()
-        logger.info("Recursos do servidor limpos com sucesso")
-    except Exception as e:
-        logger.error("Erro ao limpar recursos", error=str(e))
-
-# Registra função de limpeza
-import atexit
-atexit.register(cleanup) 
+# Cleanup é gerenciado pelo lifespan context manager 
