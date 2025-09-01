@@ -246,18 +246,13 @@ class MongoDBConnector:
             
             collection = db[collection_name]
             
-            # Obtém estatísticas da collection
-            stats = await loop.run_in_executor(
+            # Obtém estatísticas da collection usando collStats command
+            stats_data = await loop.run_in_executor(
                 self._executor,
-                collection.aggregate,
-                [{"$collStats": {"storage": {}, "count": {}, "latencyStats": {}}}]
+                db.command,
+                "collStats",
+                collection_name
             )
-            
-            stats_list = list(stats)
-            if not stats_list:
-                raise CollectionNotFoundError(f"Collection '{collection_name}' não encontrada")
-            
-            stats_data = stats_list[0]
             
             # Obtém índices
             indexes = await loop.run_in_executor(
@@ -373,10 +368,34 @@ class MongoDBConnector:
         except Exception as e:
             self.logger.error("Erro ao fechar conexões", error=str(e))
     
+    async def aclose(self) -> None:
+        """
+        Fecha conexões com o MongoDB de forma assíncrona.
+        """
+        try:
+            # Executa o fechamento do cliente de forma assíncrona
+            loop = asyncio.get_event_loop()
+            await loop.run_in_executor(None, self.client.close)
+            
+            # Shutdown do executor de forma assíncrona
+            await loop.run_in_executor(None, lambda: self._executor.shutdown(wait=True))
+            
+            self.logger.info("Conexões com MongoDB fechadas (assíncrono)")
+        except Exception as e:
+            self.logger.error("Erro ao fechar conexões (assíncrono)", error=str(e))
+    
     def __enter__(self):
         """Context manager entry."""
         return self
     
     def __exit__(self, exc_type, exc_val, exc_tb):
         """Context manager exit."""
-        self.close() 
+        self.close()
+    
+    async def __aenter__(self):
+        """Async context manager entry."""
+        return self
+    
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """Async context manager exit."""
+        await self.aclose() 
