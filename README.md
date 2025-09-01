@@ -153,7 +153,6 @@ chmod +x start-mcp.sh
    ```
 3. O script criará automaticamente:
    - Ambiente virtual Python
-   - Arquivo `.env` com configurações padrão
    - Instalação de todas as dependências
 4. Para executar o servidor:
    ```bash
